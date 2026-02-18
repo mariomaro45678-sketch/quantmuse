@@ -1,0 +1,141 @@
+{
+  "strategy_name": "HyperLiquid Ultra Scalper Pro",
+  "version": "1.1.0",
+  "description": "Professional scalping with microstructure analysis - INTEGRATED with QuantMuse",
+
+  "_integration_note": "When enabled in STRATEGY_CONFIGS, uses system RiskManager/PositionSizer. Standalone risk_management section below is for standalone testing only.",
+
+  "symbols": ["BTC", "ETH"],
+  "primary_symbols": ["BTC", "ETH"],
+  "timeframes": ["1m", "5m"],
+
+  "leverage": 10.0,
+  "max_concurrent_positions": 2,
+  "max_trades_per_day": 30,
+
+  "risk_management": {
+    "_note": "STANDALONE MODE ONLY - Integrated mode uses system risk manager",
+    "account_balance": 10000,
+    "max_position_pct": 0.15,
+    "kelly_fraction": 0.5,
+
+    "stop_loss_pct": 0.003,
+    "take_profit_pct": 0.006,
+    "breakeven_trigger_pct": 0.004,
+    "trailing_trigger_pct": 0.005,
+    "trailing_distance_pct": 0.002,
+    "time_stop_minutes": 10,
+
+    "daily_loss_limit_pct": 0.05,
+    "circuit_breaker_pct": 0.10,
+    "max_consecutive_losses": 3,
+    "cooldown_minutes": 5
+  },
+
+  "signal_parameters": {
+    "min_obi": 0.50,
+    "min_delta": 1000,
+    "min_confidence": 0.65,
+    "max_spread_pct": 0.15,
+    "min_liquidity_score": 0.70
+  },
+
+  "order_book_analysis": {
+    "levels_to_use": 5,
+    "transient_threshold_ms": 100,
+    "short_lived_threshold_ms": 500,
+    "persistent_threshold_ms": 2000,
+    "spread_normal_pct": 0.10,
+    "spread_wide_pct": 0.20,
+    "spread_extreme_pct": 0.50,
+    "min_depth_usd": 1000000,
+    "wall_threshold": 3.0
+  },
+
+  "volume_delta_analysis": {
+    "windows": [1, 5, 15],
+    "min_delta_threshold": 1000,
+    "divergence_threshold": 0.3,
+    "absorption_volume_mult": 2.0,
+    "absorption_range_mult": 0.5,
+    "tick_buffer_size": 5000,
+    "candle_history_size": 100
+  },
+
+  "stop_hunt_detection": {
+    "enabled": true,
+    "sweep_threshold_pct": 0.001,
+    "rejection_threshold_pct": 0.0005,
+    "min_level_age_seconds": 300,
+    "fade_opportunities": true
+  },
+
+  "execution": {
+    "order_type": "market",
+    "slippage_tolerance_pct": 0.05,
+    "retry_attempts": 3,
+    "retry_delay_ms": 100,
+    "use_limit_chase": false,
+    "max_execution_time_ms": 500
+  },
+
+  "integration": {
+    "_note": "Settings for multi-strategy integration",
+    "avoid_conflicting_symbols": true,
+    "max_total_exposure": 0.50,
+    "respect_global_risk_limits": true,
+    "use_system_position_tracking": true
+  },
+
+  "filters": {
+    "news_filter": {
+      "enabled": true,
+      "buffer_minutes": 5,
+      "high_impact_only": true
+    },
+    "volume_filter": {
+      "enabled": true,
+      "min_volume_ratio": 1.5
+    },
+    "time_filter": {
+      "enabled": true,
+      "trading_hours": {
+        "start": "00:00",
+        "end": "23:59"
+      },
+      "exclude_weekends": false
+    }
+  },
+
+  "logging": {
+    "level": "INFO",
+    "log_trades": true,
+    "log_signals": true,
+    "log_microstructure": false,
+    "save_trade_history": true
+  },
+
+  "monitoring": {
+    "health_check_interval_seconds": 10,
+    "performance_report_interval_minutes": 60,
+    "alert_on_circuit_breaker": true,
+    "alert_on_daily_limit": true
+  },
+
+  "backtest_settings": {
+    "slippage_model": "variable",
+    "base_slippage_pct": 0.01,
+    "commission_pct": 0.035,
+    "fill_probability": 0.98,
+    "min_data_points": 1000
+  },
+
+  "live_trading": {
+    "paper_mode": true,
+    "initial_capital": 1000,
+    "exchange": "hyperliquid",
+    "testnet": true,
+    "enable_auto_trading": false,
+    "require_manual_confirmation": true
+  }
+}

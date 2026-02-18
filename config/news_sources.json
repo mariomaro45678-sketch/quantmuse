@@ -1,0 +1,61 @@
+{
+    "sources": {
+        "telegram": {
+            "enabled": true,
+            "channels": [
+                "@WalterBloomberg",
+                "@fxstreetforex",
+                "@bloomberg"
+            ],
+            "api_id_env": "TELEGRAM_API_ID",
+            "api_hash_env": "TELEGRAM_API_HASH",
+            "phone_env": "TELEGRAM_PHONE",
+            "keywords": [
+                "XAU", "GOLD", "SILVER", "XAG",
+                "USD", "FED", "CPI", "INFLATION",
+                "TSLA", "TESLA", "NVDA", "NVIDIA",
+                "AAPL", "APPLE", "GOOGL", "GOOGLE", "ALPHABET",
+                "MSFT", "MICROSOFT", "AMZN", "AMAZON",
+                "META", "FACEBOOK", "AMD", "COIN", "COINBASE"
+            ]
+        },
+        "scraping": {
+            "investing_com": {
+                "enabled": true,
+                "base_url": "https://www.investing.com/news",
+                "intervals_seconds": [30, 90],
+                "use_proxies": true
+            }
+        },
+        "rss": {
+            "google": {
+                "enabled": true,
+                "fetch_interval_minutes": 5
+            },
+            "multi": {
+                "enabled": true,
+                "feeds": {
+                    "reuters_top":       "https://feeds.reuters.com/reuters/topNews",
+                    "reuters_biz":       "https://feeds.reuters.com/reuters/businessNews",
+                    "cnbc":              "https://www.cnbc.com/feeds/rss/top_news/index.xml",
+                    "yahoo_finance":     "https://finance.yahoo.com/rss/",
+                    "marketwatch":       "https://www.marketwatch.com/feeds/rss/10best/subheadline/stocks/news",
+                    "coindesk":          "https://www.coindesk.com/arc/outbrain/?rssId=all",
+                    "fxstreet_news":     "https://www.fxstreet.com/feeds/rss/News_en.xml",
+                    "fxstreet_analysis": "https://www.fxstreet.com/feeds/rss/Analysis_en.xml"
+                }
+            }
+        },
+        "ddg": {
+            "enabled": true,
+            "max_results": 12
+        }
+    },
+    "processing_settings": {
+        "fetch_interval_minutes": 10,
+        "deduplication_jaccard_threshold": 0.65,
+        "deduplication_url_ttl_hours": 24,
+        "article_cache_ttl_minutes": 5,
+        "sentiment_recency_half_life_hours": 2
+    }
+}

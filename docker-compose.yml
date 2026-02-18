@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  # Trading Engine
+  trading-engine:
+    build: .
+    container_name: quantmuse_engine
+    restart: always
+    volumes:
+      - .:/app
+      - /app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///hyperliquid.db}
+    command: python main.py --mode mock
+
+  # Web Dashboard
+  dashboard:
+    build: .
+    container_name: quantmuse_dashboard
+    restart: always
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    ports:
+      - "${HOST_DASHBOARD_PORT:-8001}:8000"
+    depends_on:
+      - redis
+    command: python backend/dashboard_app.py
+
+  # Redis Cache
+  redis:
+    image: redis:6-alpine
+    container_name: quantmuse_redis
+    restart: always
+    ports:
+      - "${HOST_REDIS_PORT:-6380}:6379"
+
+volumes:
+  db-data:

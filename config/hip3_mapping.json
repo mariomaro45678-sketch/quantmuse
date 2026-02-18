@@ -1,0 +1,72 @@
+{
+    "_comment": "HIP-3 Asset Mapping for Hyperliquid Mainnet",
+    "_note": "Maps internal symbols to HIP-3 DEX prefixed names",
+    "_dex_info": {
+        "xyz": "XYZ Markets - Stocks and Gold (43 assets)",
+        "flx": "FLX Markets - Metals (Gold, Silver, Copper, Oil, Palladium, Platinum)",
+        "km": "KM Markets - Indices and Stocks (US500, USTECH, Gold, Silver)",
+        "cash": "Cash Markets - Stocks and Metals (USA500, major stocks)"
+    },
+
+    "symbol_mapping": {
+        "_comment": "Internal Symbol -> HIP-3 Asset Name",
+
+        "metals": {
+            "XAU": {"hip3": "flx:GOLD", "dex": "flx", "max_leverage": 20, "decimals": 2},
+            "XAG": {"hip3": "flx:SILVER", "dex": "flx", "max_leverage": 20, "decimals": 4},
+            "HG": {"hip3": "flx:COPPER", "dex": "flx", "max_leverage": 20, "decimals": 4}
+        },
+
+        "stocks": {
+            "TSLA": {"hip3": "xyz:TSLA", "dex": "xyz", "max_leverage": 10, "decimals": 2},
+            "NVDA": {"hip3": "xyz:NVDA", "dex": "xyz", "max_leverage": 10, "decimals": 2},
+            "META": {"hip3": "xyz:META", "dex": "xyz", "max_leverage": 10, "decimals": 2},
+            "AAPL": {"hip3": "xyz:AAPL", "dex": "xyz", "max_leverage": 10, "decimals": 2},
+            "MSFT": {"hip3": "xyz:MSFT", "dex": "xyz", "max_leverage": 10, "decimals": 2},
+            "GOOGL": {"hip3": "xyz:GOOGL", "dex": "xyz", "max_leverage": 10, "decimals": 2},
+            "AMZN": {"hip3": "xyz:AMZN", "dex": "xyz", "max_leverage": 10, "decimals": 2},
+            "AMD": {"hip3": "xyz:AMD", "dex": "xyz", "max_leverage": 10, "decimals": 2},
+            "COIN": {"hip3": "xyz:COIN", "dex": "xyz", "max_leverage": 10, "decimals": 2}
+        },
+
+        "indices": {
+            "SPX": {"hip3": "km:US500", "dex": "km", "max_leverage": 25, "decimals": 2},
+            "NDX": {"hip3": "km:USTECH", "dex": "km", "max_leverage": 25, "decimals": 2}
+        },
+
+        "commodities": {
+            "CL": {"hip3": "flx:OIL", "dex": "flx", "max_leverage": 15, "decimals": 2}
+        }
+    },
+
+    "dex_endpoints": {
+        "_comment": "DEX index for API calls (0=main perps, 1+=HIP-3)",
+        "main": 0,
+        "xyz": 1,
+        "flx": 2,
+        "vntl": 3,
+        "hyna": 4,
+        "km": 5,
+        "abcd": 6,
+        "cash": 7
+    },
+
+    "reverse_mapping": {
+        "_comment": "HIP-3 name back to internal symbol",
+        "flx:GOLD": "XAU",
+        "flx:SILVER": "XAG",
+        "flx:COPPER": "HG",
+        "flx:OIL": "CL",
+        "xyz:TSLA": "TSLA",
+        "xyz:NVDA": "NVDA",
+        "xyz:META": "META",
+        "xyz:AAPL": "AAPL",
+        "xyz:MSFT": "MSFT",
+        "xyz:GOOGL": "GOOGL",
+        "xyz:AMZN": "AMZN",
+        "xyz:AMD": "AMD",
+        "xyz:COIN": "COIN",
+        "km:US500": "SPX",
+        "km:USTECH": "NDX"
+    }
+}

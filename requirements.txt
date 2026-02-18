@@ -1,0 +1,45 @@
+# Core Web Framework
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+websockets==12.0
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# Data Processing
+pandas==2.1.4
+numpy==1.26.3
+requests==2.31.0
+aiohttp==3.9.1
+
+# Technical Analysis
+ta==0.11.0
+scipy==1.11.4
+
+# NLP / AI
+transformers==4.36.2
+torch>=2.2.0
+spacy==3.7.2
+openai==1.7.2
+
+# Storage / Database
+sqlalchemy==2.0.25
+psycopg2-binary==2.9.9
+redis==5.0.1
+aiosqlite==0.19.0
+
+# Testing
+pytest==7.4.4
+pytest-asyncio==0.23.3
+pytest-mock==3.12.0
+
+# Hyperliquid SDK
+hyperliquid-python-sdk>=0.20.0
+
+# News scraping
+ddgs>=7.0.0
+lxml>=4.9.0
+
+# Additional utilities
+python-dateutil==2.8.2
+pytz==2023.3

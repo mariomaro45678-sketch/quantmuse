@@ -1,0 +1,14 @@
+{
+  "network": "mainnet",
+  "wallet_address": "${HYPERLIQUID_WALLET_ADDRESS}",
+  "secret_key": "${HYPERLIQUID_API_SECRET}",
+  "api_base_url": "https://api.hyperliquid.xyz",
+  "ws_url": "wss://api.hyperliquid.xyz/ws",
+  "max_leverage_per_asset": 5,
+  "max_portfolio_leverage": 3,
+  "max_position_pct": 0.25,
+  "max_daily_loss_pct": 0.05,
+  "rate_limit_requests_per_second": 5,
+  "request_timeout_seconds": 30,
+  "hip3_enabled": true
+}

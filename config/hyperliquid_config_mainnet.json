@@ -1,0 +1,28 @@
+{
+    "_comment": "Hyperliquid MAINNET Configuration - USE WITH CAUTION",
+
+    "network": "mainnet",
+    "wallet_address": "${HYPERLIQUID_WALLET_ADDRESS}",
+    "secret_key": "${HYPERLIQUID_API_SECRET}",
+
+    "api_base_url": "https://api.hyperliquid.xyz",
+    "ws_url": "wss://api.hyperliquid.xyz/ws",
+
+    "max_leverage_per_asset": 10,
+    "max_portfolio_leverage": 3,
+    "max_position_pct": 0.25,
+    "max_daily_loss_pct": 0.05,
+
+    "rate_limit_requests_per_second": 5,
+    "request_timeout_seconds": 30,
+
+    "hip3_enabled": true,
+    "hip3_dex_preference": ["flx", "xyz", "km"],
+
+    "_safety_notes": [
+        "This is MAINNET config - real money at risk",
+        "max_daily_loss_pct reduced to 5% for safety",
+        "max_portfolio_leverage reduced to 3x",
+        "Always test with small amounts first"
+    ]
+}

@@ -1,0 +1,6 @@
+{
+    "momentum_threshold": 0.2,
+    "volume_min": 0.7,
+    "cooldown_minutes": 90,
+    "adx_threshold": 30
+}

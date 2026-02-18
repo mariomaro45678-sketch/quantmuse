@@ -1,0 +1,39 @@
+{
+    "position_limits": {
+        "max_position_size_usd": 50000,
+        "max_position_pct_per_asset": 0.3,
+        "max_leverage_per_asset": 10,
+        "max_portfolio_leverage": 5,
+        "max_correlated_exposure_pct": 0.5
+    },
+    "loss_limits": {
+        "max_daily_loss_pct": 0.10,
+        "max_weekly_loss_pct": 0.20,
+        "max_drawdown_pct": 0.25,
+        "circuit_breaker_drawdown_pct": 0.15
+    },
+    "var_settings": {
+        "var_confidence_levels": [
+            0.95,
+            0.99
+        ],
+        "var_lookback_days": 30,
+        "var_method": "historical"
+    },
+    "stop_loss_settings": {
+        "default_stop_loss_pct": 0.05,
+        "trailing_stop_enabled": true,
+        "trailing_stop_activation_pct": 0.03,
+        "trailing_stop_distance_pct": 0.02
+    },
+    "funding_rate_limits": {
+        "max_funding_rate_long": 0.01,
+        "max_funding_rate_short": -0.01,
+        "funding_check_interval_minutes": 60
+    },
+    "liquidity_requirements": {
+        "min_open_interest_usd": 1000000,
+        "min_24h_volume_usd": 5000000,
+        "max_order_book_slippage_pct": 0.002
+    }
+}

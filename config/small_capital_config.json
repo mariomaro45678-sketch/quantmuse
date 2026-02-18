@@ -1,0 +1,52 @@
+{
+    "_comment": "Risk config override for small capital accounts (<$100 USD)",
+
+    "capital_tier": "micro",
+    "min_capital": 10,
+    "max_capital": 100,
+
+    "position_limits": {
+        "max_position_size_usd": 50,
+        "max_position_pct_per_asset": 0.40,
+        "max_leverage_per_asset": 5,
+        "max_portfolio_leverage": 3,
+        "max_correlated_exposure_pct": 0.60
+    },
+
+    "loss_limits": {
+        "max_daily_loss_pct": 0.15,
+        "max_weekly_loss_pct": 0.25,
+        "max_drawdown_pct": 0.30,
+        "circuit_breaker_drawdown_pct": 0.20
+    },
+
+    "hip3_settings": {
+        "_note": "HIP-3 specific settings for builder perps",
+        "taker_fee_pct": 0.001,
+        "maker_fee_pct": 0.0004,
+        "use_isolated_margin": true,
+        "preferred_dexes": ["flx", "xyz"]
+    },
+
+    "trading_settings": {
+        "_comment": "Conservative settings for small capital",
+        "min_trade_interval_seconds": 300,
+        "max_trades_per_hour": 6,
+        "prefer_limit_orders": true,
+        "slippage_tolerance_pct": 0.002
+    },
+
+    "assets_to_trade": {
+        "_comment": "Best assets for small capital (low min_order_size)",
+        "metals": ["XAU", "XAG"],
+        "stocks": ["TSLA", "NVDA", "META"],
+        "crypto": []
+    },
+
+    "position_sizing": {
+        "method": "volatility",
+        "target_daily_vol_pct": 0.02,
+        "kelly_cap_fraction": 0.15,
+        "min_position_usd": 2.0
+    }
+}

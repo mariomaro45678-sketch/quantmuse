@@ -1,0 +1,46 @@
+# Environment
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+ENV/
+*.egg-info/
+
+# Node
+node_modules/
+.next/
+dist/
+build/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Docker volumes / data
+data/
+*.db
+*.sqlite
+
+
+# Sensitive
+API_Keys.md
+*.key
+*.keys
+secrets.md
+*secret*
+*credentials*
+*.session
+*.session-journal
