@@ -222,7 +222,7 @@ class SentimentDriven(StrategyBase):
             confidence = float(np.clip(confidence, 0.0, 1.0))
             
             # Minimum confidence threshold
-            if direction != 'flat' and confidence < 0.35:
+            if direction != 'flat' and confidence < 0.50:
                 direction = 'flat'
                 rationale_parts.append("insufficient confidence")
             

@@ -859,7 +859,7 @@ async def get_phase13_status():
                 # Get trade stats
                 cursor.execute("""
                     SELECT
-                        COUNT(*) as total,
+                        SUM(CASE WHEN realized_pnl != 0 THEN 1 ELSE 0 END) as total,
                         SUM(CASE WHEN realized_pnl > 0 THEN 1 ELSE 0 END) as wins,
                         SUM(CASE WHEN realized_pnl < 0 THEN 1 ELSE 0 END) as losses,
                         SUM(realized_pnl) as total_pnl,

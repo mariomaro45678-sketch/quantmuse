@@ -90,41 +90,82 @@ class TradingEngine:
                 
                 # 3. Position Sizing & Execution
                 target_positions = self.strategy.size_positions(signals, None)
-                
+
+                # Get current positions and equity
+                current_positions = {}
+                try:
+                    positions = await self.executor.get_positions()
+                    for pos in positions:
+                        coin = pos.symbol.split(':')[-1] if ':' in pos.symbol else pos.symbol
+                        current_positions[coin] = pos.size
+                        
+                    # Fetch User State to update Equity
+                    user_state = await self.executor.get_user_state()
+                    self.risk_mgr.set_portfolio(
+                        equity=user_state.total_equity if hasattr(user_state, 'total_equity') else getattr(user_state, 'equity', 100_000.0),
+                        open_positions=[{'symbol': p.symbol, 'notional': p.size * p.entry_price} for p in positions]
+                    )
+                except Exception as e:
+                    logger.debug(f"Position/State fetch error: {e}")
+
                 for sym, target_pct in target_positions.items():
-                    if target_pct == 0: continue
-                    
+                    current_size = current_positions.get(sym, 0)
+
+                    # Skip if no action needed (no position and no signal)
+                    if target_pct == 0 and abs(current_size) < 1e-8:
+                        continue
+
                     try:
                         md = await self.fetcher.get_market_data(sym)
                         px = md.mid_price
-                        
-                        raw_size = abs(target_pct * self.risk_mgr.equity / px)
-                        
+
+                        target_size = target_pct * self.risk_mgr.equity / px
+                        delta_size = target_size - current_size
+
+                        # Determine if closing
+                        is_closing = False
+                        if current_size > 0 and delta_size < 0:
+                            is_closing = True
+                        elif current_size < 0 and delta_size > 0:
+                            is_closing = True
+
+                        delta_notional = abs(delta_size * px)
+                        min_delta = 2.0 if is_closing else 5.0
+                        if delta_notional < min_delta:
+                            continue
+
+                        side = "buy" if delta_size > 0 else "sell"
+                        raw_size = abs(delta_size)
+
                         final_size = self.pos_sizer.apply_constraints(
                             symbol=sym,
                             raw_size=raw_size,
                             leverage=3.0,
                             price=px,
-                            min_order_size=0.001
+                            min_order_size=0.001,
+                            is_closing=is_closing,
+                            side=side,
+                            strategy_name=self.strategy_name
                         )
-                        
+
                         if final_size > 0:
-                            side = "buy" if target_pct > 0 else "sell"
-                            logger.info(f"Risk Check Passed: {sym} {side} size={final_size:.4f} @ {px}")
-                            
+                            tag = " [CLOSE]" if is_closing else ""
+                            logger.info(f"Risk Check Passed{tag}: {sym} {side} size={final_size:.4f} @ {px}")
+
                             res = await self.order_mgr.create_order(
                                 symbol=sym,
                                 side=side,
                                 sz=final_size,
                                 px=px,
-                                strategy_name=self.strategy_name
+                                strategy_name=self.strategy_name,
+                                is_closing=is_closing
                             )
                             if not res.success:
                                 logger.error(f"Order Execution Failed: {res.error}")
                             else:
                                 logger.info(f"Order Successful: {res.order_id}")
-                                get_health().record_order_placed()
-                                
+                                get_health().record_order()
+
                     except Exception as e:
                         logger.error(f"Error processing strategy logic for {sym}: {e}")
 

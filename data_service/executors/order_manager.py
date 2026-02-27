@@ -59,7 +59,7 @@ class OrderManager:
             self.executor.set_price(symbol, px)
 
         res = await self.executor.place_order(symbol, side, sz, px, order_type,
-                                              strategy=strategy_name)
+                                              leverage=leverage, strategy=strategy_name)
         
         if res.success and res.order_id:
             order_record = {
@@ -181,25 +181,11 @@ class OrderManager:
                         trade['status'] = 'filled'
                         trade['closed_at'] = trade.get('closed_at') or datetime.now().isoformat()
                         
-                        # Use realizedPnl from the exchange if available
-                        # Sum up realizedPnl from all fills for this order
-                        exchange_pnl = sum(float(f.get('realizedPnl', 0)) for f in trade_fills)
+                        # Use closedPnl from the exchange if available
+                        # Hyperliquid's userFills API provides 'closedPnl' for trades that close a position.
+                        exchange_pnl = sum(float(f.get('closedPnl', 0)) for f in trade_fills)
                         
-                        if exchange_pnl != 0:
-                            trade['realized_pnl'] = exchange_pnl
-                        else:
-                            # Fallback to manual calculation if exchange doesn't provide it
-                            # (Note: Entries will have 0 manual P&L)
-                            entry_px = trade.get('price')
-                            if entry_px and avg_px:
-                                side = trade.get('side', '').lower()
-                                sz = trade.get('size', 0)
-                                if side == 'buy':
-                                    trade['realized_pnl'] = (avg_px - entry_px) * sz
-                                else:
-                                    trade['realized_pnl'] = (entry_px - avg_px) * sz
-                            else:
-                                trade['realized_pnl'] = 0.0
+                        trade['realized_pnl'] = exchange_pnl
                         
                         # Save updated record
                         self.storage.save_order(trade)

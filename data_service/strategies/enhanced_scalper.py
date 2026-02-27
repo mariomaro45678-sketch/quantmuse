@@ -65,12 +65,12 @@ class EnhancedScalper(StrategyBase):
         # Configuration with safer defaults for multi-strategy context
         self.leverage = self.config.get('leverage', 10.0)  # Reduced from 20x
         self.max_position_pct = self.config.get('max_position_pct', 0.15)  # 15% max
-        self.min_confidence = self.config.get('min_confidence', 0.65)
+        self.min_confidence = self.config.get('min_confidence', 0.55)
         self.cooldown_seconds = self.config.get('cooldown_seconds', 60)
         self.time_stop_seconds = self.config.get('time_stop_seconds', 600)
 
         # Signal thresholds
-        self.min_obi_threshold = self.config.get('min_obi_threshold', 0.50)
+        self.min_obi_threshold = self.config.get('min_obi_threshold', 0.15)
         self.min_delta_threshold = self.config.get('min_delta_threshold', 1000)
         self.max_spread_pct = self.config.get('max_spread_pct', 0.15)
         self.min_liquidity_score = self.config.get('min_liquidity_score', 0.70)
@@ -82,6 +82,9 @@ class EnhancedScalper(StrategyBase):
 
         # Position conflict settings
         self.avoid_conflicting_symbols = self.config.get('avoid_conflicting_symbols', True)
+
+        # Max concurrent positions (default 3)
+        self.max_open_positions = self.config.get('max_open_positions', 3)
 
         # Initialize microstructure analyzers
         self._init_analyzers()
@@ -104,7 +107,8 @@ class EnhancedScalper(StrategyBase):
         self._scalper_log = None
 
         logger.info(f"Initialized {self.name}: leverage={self.leverage}x, "
-                   f"max_pos={self.max_position_pct:.0%}, SL={self.stop_loss_pct:.2%}")
+                   f"max_pos={self.max_position_pct:.0%}, SL={self.stop_loss_pct:.2%}, "
+                   f"max_concurrent={self.max_open_positions}")
 
     def _init_analyzers(self):
         """Initialize microstructure analysis modules."""
@@ -315,9 +319,15 @@ class EnhancedScalper(StrategyBase):
         last_sig = self.last_signals.get(symbol)
 
         if not last_sig or last_sig.direction == 'flat':
-            # Clean up stale state
+            # Position exists in executor but strategy signal went flat.
+            # Generate explicit close signal so runner closes the position.
+            self._slog.log_exit(
+                symbol, current_price, entry_price,
+                'long', "signal_lost"  # direction doesn't matter for close
+            )
             self._clear_position_state(symbol)
-            return None
+            return Signal(symbol, 'flat', 0.95,
+                         "Signal lost - closing orphaned position")
 
         # Calculate P&L
         if last_sig.direction == 'long':
@@ -429,9 +439,11 @@ class EnhancedScalper(StrategyBase):
         # 3. Order book analysis (if fetcher available)
         if fetcher and self.ob_analyzer:
             try:
-                ob_data = await fetcher.get_orderbook(symbol, depth=10)
-                if ob_data and 'bids' in ob_data and 'asks' in ob_data:
-                    snapshot = create_order_book_snapshot(symbol, ob_data['bids'], ob_data['asks'])
+                ob_data = await fetcher.get_l2_book(symbol)
+                if ob_data and ob_data.levels and len(ob_data.levels) == 2:
+                    raw_bids = [[e.px, e.sz] for e in ob_data.levels[0]]
+                    raw_asks = [[e.px, e.sz] for e in ob_data.levels[1]]
+                    snapshot = create_order_book_snapshot(symbol, raw_bids, raw_asks)
                     metrics = self.ob_analyzer.analyze(snapshot)
 
                     if metrics.is_valid:
@@ -498,6 +510,14 @@ class EnhancedScalper(StrategyBase):
                 rationale_parts.append(f"Below min confidence ({confidence:.2f})")
             else:
                 rationale_parts.append("No signal")
+
+        # 7. Max concurrent positions check
+        if direction != 'flat' and len(self.entry_prices) >= self.max_open_positions:
+            # Already tracking max positions - don't open new ones
+            if symbol not in self.entry_prices:
+                direction = 'flat'
+                rationale_parts.append(
+                    f"Max positions reached ({len(self.entry_prices)}/{self.max_open_positions})")
 
         # Track entry if new position
         if direction != 'flat':

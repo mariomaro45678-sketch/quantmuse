@@ -412,23 +412,26 @@ def create_order_book_snapshot(symbol: str, raw_bids: List[Dict],
     
     for b in raw_bids:
         if isinstance(b, (list, tuple)):
-            bids.append(OrderBookLevel(price=float(b[0]), size=float(b[1])))
+            # L2 data from exchange has no age info - assume persistent (not transient)
+            bids.append(OrderBookLevel(price=float(b[0]), size=float(b[1]),
+                                       age_ms=1000.0))  # default to 1s (above transient threshold)
         else:
             bids.append(OrderBookLevel(
                 price=float(b['price']),
                 size=float(b['size']),
-                age_ms=b.get('age_ms', 0),
+                age_ms=b.get('age_ms', 1000.0),
                 order_count=b.get('count', 1)
             ))
-    
+
     for a in raw_asks:
         if isinstance(a, (list, tuple)):
-            asks.append(OrderBookLevel(price=float(a[0]), size=float(a[1])))
+            asks.append(OrderBookLevel(price=float(a[0]), size=float(a[1]),
+                                       age_ms=1000.0))
         else:
             asks.append(OrderBookLevel(
                 price=float(a['price']),
                 size=float(a['size']),
-                age_ms=a.get('age_ms', 0),
+                age_ms=a.get('age_ms', 1000.0),
                 order_count=a.get('count', 1)
             ))
     

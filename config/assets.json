@@ -144,6 +144,28 @@
             "volatility_profile": "very_high"
         },
         {
+            "symbol": "BTC",
+            "display_name": "Bitcoin",
+            "asset_class": "crypto",
+            "tick_size": 1.0,
+            "min_order_size": 0.0001,
+            "max_leverage": 20,
+            "correlation_group": "crypto",
+            "trading_hours": "24/7",
+            "volatility_profile": "high"
+        },
+        {
+            "symbol": "ETH",
+            "display_name": "Ethereum",
+            "asset_class": "crypto",
+            "tick_size": 0.1,
+            "min_order_size": 0.001,
+            "max_leverage": 20,
+            "correlation_group": "crypto",
+            "trading_hours": "24/7",
+            "volatility_profile": "high"
+        },
+        {
             "symbol": "CL",
             "display_name": "Crude Oil",
             "asset_class": "commodity",

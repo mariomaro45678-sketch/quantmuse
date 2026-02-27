@@ -59,6 +59,10 @@ class UserState:
     maintenance_margin_used: float
     leverage: float
     timestamp: float = field(default_factory=time.time)
+    
+    @property
+    def total_equity(self) -> float:
+        return self.equity
 
 @dataclass
 class TradeRecord:
@@ -337,9 +341,29 @@ class HyperliquidExecutor:
             return self._sz_decimals_cache[symbol]
         return 3  # Default to 3 decimals
 
+    def _get_tick_size(self, symbol: str) -> Optional[float]:
+        """Get tick size for an asset's price."""
+        if hasattr(self, '_tick_size_cache') and symbol in self._tick_size_cache:
+            return self._tick_size_cache[symbol]
+        return None  # Will fall back to heuristic rounding
+
+    def _round_price_to_tick(self, px: float, symbol: str) -> float:
+        """Round price to the nearest valid tick increment and max 5 significant digits."""
+        # 1. First round to tick size if we have it
+        tick = self._get_tick_size(symbol)
+        if tick and tick > 0:
+            px = round(round(px / tick) * tick, 10)
+
+        # 2. Hyperliquid SDK enforce a strict 5 significant figure rule for all prices
+        # float_to_wire uses f"{x:.5g}". If float(f"{x:.5g}") != x, it raises an error.
+        # We enforce 5 sig figs here by formatting and parsing back to float.
+        px_str = f"{px:.5g}"
+        return float(px_str)
+
     def _cache_sz_decimals(self):
-        """Cache szDecimals for all assets to avoid repeated API calls."""
+        """Cache szDecimals and tick sizes for all assets to avoid repeated API calls."""
         self._sz_decimals_cache = {}
+        self._tick_size_cache = {}
         try:
             all_metas = self.exchange.info.post('/info', {'type': 'allPerpMetas'})
             for dex in all_metas:
@@ -347,7 +371,17 @@ class HyperliquidExecutor:
                     name = asset.get('name')
                     sz_dec = asset.get('szDecimals', 3)
                     self._sz_decimals_cache[name] = sz_dec
-            logger.debug(f"Cached szDecimals for {len(self._sz_decimals_cache)} assets")
+
+                    # Cache tick size from metadata if available
+                    # Hyperliquid provides tick sizes via 'pxDecimals' or can be
+                    # inferred from 'tickSize' field
+                    if 'tickSize' in asset:
+                        self._tick_size_cache[name] = float(asset['tickSize'])
+                    elif 'pxDecimals' in asset:
+                        self._tick_size_cache[name] = 10 ** (-int(asset['pxDecimals']))
+
+            logger.info(f"Cached szDecimals for {len(self._sz_decimals_cache)} assets, "
+                        f"tickSizes for {len(self._tick_size_cache)} assets")
         except Exception as e:
             logger.warning(f"Failed to cache szDecimals: {e}")
 
@@ -533,21 +567,28 @@ class HyperliquidExecutor:
             sz_decimals = self._get_sz_decimals(hip3_symbol)
             sz = round(sz, sz_decimals)
 
-            # Round price to reasonable precision (typically 5-6 significant figures)
-            if px > 1000:
-                px = round(px, 1)
-            elif px > 100:
-                px = round(px, 2)
-            elif px > 1:
-                px = round(px, 4)
-            else:
-                px = round(px, 6)
+            # Round price to valid tick size for the asset
+            px = self._round_price_to_tick(px, hip3_symbol)
 
             logger.debug(f"Order: {hip3_symbol} {side} sz={sz} (decimals={sz_decimals}) px={px}")
 
             # Execute order with HIP-3 symbol
             # SDK signature: order(name, is_buy, sz, limit_px, order_type, reduce_only=False, ...)
             ot = {"limit": {"tif": "Gtc"}} if order_type == "limit" else {"limit": {"tif": "Ioc"}}
+            
+            # Ensure leverage is high enough before placing order
+            import math
+            try:
+                # Require cast to int for update_leverage, apply it on the asset level
+                is_cross = True # default cross margin
+                set_lev = int(math.ceil(max(leverage, 1.0)))
+                # Only set leverage if greater than 1, to save an API call
+                if set_lev > 1:
+                    await self._retry_call(self.exchange.update_leverage, set_lev, hip3_symbol, is_cross)
+                    logger.debug(f"Adjusted {hip3_symbol} leverage to {set_lev}x")
+            except Exception as e:
+                logger.warning(f"Could not update leverage for {hip3_symbol}: {e}")
+                
             res = await self._retry_call(
                 self.exchange.order,
                 hip3_symbol,  # Use HIP-3 symbol (e.g., flx:GOLD)
@@ -646,7 +687,7 @@ class HyperliquidExecutor:
         ]
 
     async def get_user_state(self) -> UserState:
-        """Fetch account margin and equity summary."""
+        """Fetch account margin and equity summary across ALL clearinghouses (main + HIP-3 DEXes)."""
         if self.mode == "mock":
             return UserState(
                 equity=self.mock_ledger.equity,
@@ -656,15 +697,36 @@ class HyperliquidExecutor:
                 leverage=1.0
             )
         
-        # Live Implementation
-        state = await self._retry_call(self.info.user_state, self.address)
+        # Live Implementation — sum across ALL clearinghouses (main + xyz + flx)
+        total_equity = 0.0
+        total_available = 0.0
+        total_initial_margin = 0.0
+        total_maint_margin = 0.0
+
+        dexes = [None, 'xyz', 'flx']  # None = main perps
+        for dex in dexes:
+            try:
+                payload = {'type': 'clearinghouseState', 'user': self.address}
+                if dex:
+                    payload['dex'] = dex
+
+                state = await self._retry_call(self.info.post, '/info', payload)
+                margin = state.get('marginSummary', {})
+                total_equity += float(margin.get('accountValue', 0))
+                total_initial_margin += float(margin.get('totalInitialMargin', 0))
+                total_maint_margin += float(margin.get('totalMaintenanceMargin', 0))
+                total_available += float(state.get('withdrawable', 0))
+            except Exception as e:
+                logger.warning(f"Error fetching user state from {dex or 'main'} DEX: {e}")
+
         return UserState(
-            equity=float(state['marginSummary']['accountValue']),
-            available_margin=float(state['withdrawable']),
-            initial_margin_used=float(state['marginSummary']['totalInitialMargin']),
-            maintenance_margin_used=float(state['marginSummary']['totalMaintenanceMargin']),
-            leverage=1.0 # Need to iterate through positions to get effective leverage if needed
+            equity=total_equity,
+            available_margin=total_available,
+            initial_margin_used=total_initial_margin,
+            maintenance_margin_used=total_maint_margin,
+            leverage=1.0
         )
+
 
     async def get_user_fills(self) -> List[Dict[str, Any]]:
         """Fetch recent execution history (fills) for the account."""

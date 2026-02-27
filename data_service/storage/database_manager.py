@@ -17,13 +17,21 @@ class DatabaseManager:
         self.db_path = db_path
         self._init_db()
 
+    def _connect(self):
+        """Create a connection with busy_timeout to prevent 'database is locked' errors."""
+        conn = sqlite3.connect(self.db_path, timeout=10)
+        conn.execute("PRAGMA busy_timeout = 5000")
+        conn.execute("PRAGMA journal_mode = WAL")
+        return conn
+
     def _init_db(self):
         """
         Initialize SQLite database. 
         Note: migrations/init_db.py should be the primary way to create the schema.
         This provides a safety check for the app.
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
+
             cursor = conn.cursor()
             
             # Use the same schema as migrations/init_db.py
@@ -137,7 +145,7 @@ class DatabaseManager:
 
     def save_article(self, article: Article):
         """Persist a scored article to the database."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO news (
@@ -182,7 +190,7 @@ class DatabaseManager:
                 json.dumps(article.raw_data) if article.raw_data else None
             ))
 
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.executemany("""
                 INSERT OR REPLACE INTO news (
@@ -198,7 +206,7 @@ class DatabaseManager:
         """Fetch articles for a symbol within the specified time window."""
         cutoff = (datetime.now() - timedelta(hours=hours_back)).isoformat()
         
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("""
@@ -224,7 +232,7 @@ class DatabaseManager:
 
     def save_sentiment_snapshot(self, symbol: str, factors: Dict[str, float], article_count: int):
         """Save a snapshot of computed sentiment factors."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO sentiment_factors (
@@ -242,7 +250,7 @@ class DatabaseManager:
 
     def get_latest_sentiment_factors(self, symbol: str) -> Optional[Dict[str, Any]]:
         """Get the most recent factors for a symbol."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("""
@@ -260,7 +268,7 @@ class DatabaseManager:
 
         Used for momentum calculation to compare current sentiment vs N hours ago.
         """
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("""
@@ -275,7 +283,7 @@ class DatabaseManager:
 
     def save_metals_snapshot(self, factors: Dict[str, float]):
         """Save a snapshot of computed metals factors."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO metals_factors (
@@ -293,7 +301,7 @@ class DatabaseManager:
 
     def get_latest_metals_factors(self) -> Optional[Dict[str, Any]]:
         """Get the most recent metals ratios."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM metals_factors ORDER BY timestamp DESC LIMIT 1")
@@ -302,7 +310,7 @@ class DatabaseManager:
 
     def save_historical_metals_ratios(self, ratios: List[Dict[str, Any]]):
         """Save a list of historical metals ratios."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             for r in ratios:
                 cursor.execute("""
@@ -321,7 +329,7 @@ class DatabaseManager:
 
     def save_optimisation_result(self, result: Dict[str, Any]):
         """Persist an optimisation run result."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO optimisation_results (
@@ -342,7 +350,7 @@ class DatabaseManager:
 
     def save_optimization_summary(self, summary: Dict[str, Any]):
         """Persist an optimization summary."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO optimisation_summaries (
@@ -358,7 +366,7 @@ class DatabaseManager:
 
     def save_risk_snapshot(self, snapshot: Dict[str, Any]):
         """Save a risk snapshot for Phase 7 risk management."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO risk_snapshots (
@@ -378,7 +386,7 @@ class DatabaseManager:
 
     def get_recent_risk_snapshots(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Get recent risk snapshots."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("""
@@ -390,7 +398,7 @@ class DatabaseManager:
 
     def save_alert(self, alert: Dict[str, Any]):
         """Save an alert (circuit breaker, risk limit, etc.)."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO alerts (timestamp, type, message, severity)
@@ -405,7 +413,7 @@ class DatabaseManager:
 
     def get_recent_alerts(self, limit: int = 50) -> List[Dict[str, Any]]:
         """Get recent alerts."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("""
@@ -417,7 +425,7 @@ class DatabaseManager:
 
     def save_candle(self, symbol: str, timeframe: str, data: Dict[str, Any]):
         """Save a single candle to the database."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT OR REPLACE INTO candles (
@@ -437,7 +445,7 @@ class DatabaseManager:
 
     def get_candles(self, symbol: str, timeframe: str, limit: int = 1000) -> List[Dict[str, Any]]:
         """Retrieve historical candles from the database."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("""

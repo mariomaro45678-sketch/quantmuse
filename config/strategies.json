@@ -1,8 +1,28 @@
 {
     "strategies": {
-        "momentum_perpetuals": {
+        "sniper": {
             "enabled": true,
-            "cooldown_minutes": 30,
+            "leverage": 10.0,
+            "stop_loss_pct": 0.10,
+            "take_profit_pct": 0.20,
+            "trailing_activation_pct": 0.15,
+            "trailing_distance_pct": 0.50,
+            "min_confidence": 0.80,
+            "cooldown_minutes": 240,
+            "loss_cooldown_minutes": 480,
+            "max_hold_hours": 24,
+            "adx_threshold": 30,
+            "volume_threshold": 1.5,
+            "min_data_points": 100,
+            "applicable_assets": [
+                "XAU", "XAG", "HG",
+                "TSLA", "NVDA", "AAPL", "GOOGL", "AMZN", "META", "MSFT", "AMD", "COIN",
+                "CL"
+            ]
+        },
+        "momentum_perpetuals": {
+            "enabled": false,
+            "cooldown_minutes": 60,
             "momentum_threshold": 0.15,
             "funding_threshold": 0.0005,
             "funding_exit_threshold": 0.002,
@@ -10,26 +30,18 @@
             "volume_min_threshold": 0.7,
             "position_size_method": "volatility_scaled",
             "risk_per_trade": 0.01,
-            "stop_loss_atr_multiplier": 1.5,
-            "max_position_size": 0.30,
-            "max_total_exposure": 2.0,
+            "stop_loss_atr_multiplier": 3.0,
+            "max_position_size": 0.25,
+            "max_total_exposure": 1.0,
             "base_position_size": 0.10,
             "min_data_points": 100,
-            "applicable_assets": [
-                "TSLA",
-                "NVDA",
-                "AMD",
-                "COIN",
-                "XAU",
-                "XAG",
-                "CL"
-            ]
+            "applicable_assets": ["TSLA", "NVDA"]
         },
         "mean_reversion_metals": {
-            "enabled": true,
+            "enabled": false,
             "rsi_period": 14,
-            "rsi_oversold": 30,
-            "rsi_overbought": 70,
+            "rsi_oversold": 35,
+            "rsi_overbought": 65,
             "bb_period": 20,
             "bb_std": 2.0,
             "ratio_zscore_threshold": 2.0,
@@ -37,15 +49,11 @@
             "trend_filter_threshold": 35,
             "base_position_size": 0.15,
             "max_total_exposure": 0.40,
-            "applicable_assets": [
-                "XAU",
-                "XAG",
-                "HG"
-            ]
+            "applicable_assets": ["XAU", "XAG", "HG"]
         },
         "sentiment_driven": {
-            "enabled": true,
-            "momentum_threshold": 0.15,
+            "enabled": false,
+            "momentum_threshold": 0.20,
             "volume_min": 0.8,
             "volume_boost_threshold": 1.5,
             "expiry_hours": 4,
@@ -53,29 +61,17 @@
             "variance_threshold": 0.2,
             "base_position_size": 0.10,
             "max_total_exposure": 0.40,
-            "_comment": "Lowered threshold 0.3→0.15 for 24h test",
-            "applicable_assets": [
-                "AAPL",
-                "GOOGL",
-                "MSFT",
-                "AMZN",
-                "META",
-                "TSLA",
-                "NVDA",
-                "XAU",
-                "XAG"
-            ]
+            "applicable_assets": ["AMZN", "GOOGL", "META"]
         },
         "enhanced_scalper": {
-            "enabled": true,
+            "enabled": false,
             "paper_trading_only": true,
-            "_comment": "ENABLED FOR PAPER TRADING ONLY - paper_trading_only=true prevents live execution",
             "leverage": 10.0,
             "max_position_pct": 0.15,
-            "min_confidence": 0.65,
+            "min_confidence": 0.55,
             "cooldown_seconds": 60,
             "time_stop_seconds": 600,
-            "min_obi_threshold": 0.50,
+            "min_obi_threshold": 0.15,
             "min_delta_threshold": 1000,
             "max_spread_pct": 0.15,
             "min_liquidity_score": 0.70,
@@ -84,15 +80,13 @@
             "breakeven_trigger_pct": 0.004,
             "avoid_conflicting_symbols": true,
             "max_total_exposure": 0.50,
-            "applicable_assets": [
-                "BTC",
-                "ETH"
-            ]
+            "max_open_positions": 3,
+            "applicable_assets": ["BTC", "ETH"]
         }
     },
     "global_settings": {
-        "max_concurrent_positions": 5,
-        "position_size_method": "volatility_scaled",
+        "max_concurrent_positions": 1,
+        "position_size_method": "fixed",
         "backtesting_commission_pct": 0.001,
         "slippage_model": "dynamic"
     }

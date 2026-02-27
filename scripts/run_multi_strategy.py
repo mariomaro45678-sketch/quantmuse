@@ -46,6 +46,7 @@ from data_service.strategies.momentum_perpetuals import MomentumPerpetuals  # no
 from data_service.strategies.mean_reversion_metals import MeanReversionMetals  # noqa: F401
 from data_service.strategies.sentiment_driven import SentimentDriven  # noqa: F401
 from data_service.strategies.enhanced_scalper import EnhancedScalper  # noqa: F401
+from data_service.strategies.sniper_strategy import SniperStrategy  # noqa: F401
 
 logger = logging.getLogger("MultiStrategy")
 
@@ -129,32 +130,40 @@ class ProcessLock:
 
 # Strategy configurations with their asset universes
 STRATEGY_CONFIGS = {
-    "momentum_perpetuals": {
+    "sniper": {
         "enabled": True,
-        "assets": ["TSLA", "NVDA", "AMD", "COIN"],  # High-volatility stocks
-        "interval_seconds": 60,
-        "description": "Momentum strategy for volatile stocks"
+        "assets": [
+            "XAU", "XAG", "HG",
+            "TSLA", "NVDA", "AAPL", "GOOGL", "AMZN", "META", "MSFT", "AMD", "COIN",
+            "CL",
+        ],
+        "interval_seconds": 300,  # 5min cycles — no need to rush, sniper waits
+        "description": "Ultra-conservative sniper (10x, 1 position, high conviction only)"
+    },
+    "momentum_perpetuals": {
+        "enabled": False,
+        "assets": ["TSLA", "NVDA"],
+        "interval_seconds": 300,
+        "description": "Momentum strategy for volatile stocks [DISABLED]"
     },
     "mean_reversion_metals": {
-        "enabled": True,
-        "assets": ["XAU", "XAG"],  # Precious metals
+        "enabled": False,
+        "assets": ["XAU", "XAG"],
         "interval_seconds": 60,
-        "description": "Mean reversion on gold/silver ratio"
+        "description": "Mean reversion on gold/silver ratio [DISABLED]"
     },
     "sentiment_driven": {
-        "enabled": True,
-        "assets": ["AAPL", "GOOGL", "MSFT", "AMZN", "META"],  # Mega-cap tech
-        "interval_seconds": 120,
-        "description": "News sentiment-driven trading"
+        "enabled": False,
+        "assets": ["AMZN", "GOOGL", "META"],
+        "interval_seconds": 180,
+        "description": "News sentiment-driven trading [DISABLED]"
     },
     "enhanced_scalper": {
-        "enabled": True,           # ENABLED for paper trading validation
-        "paper_trading_only": True,  # SAFETY: Must run with --mock flag or will refuse to trade
-        "assets": ["BTC", "ETH"],  # High liquidity crypto only
-        "interval_seconds": 10,    # Fast interval for scalping
-        "description": "Microstructure-based scalping (10x leverage) [PAPER ONLY]",
-        # IMPORTANT: Uses separate asset universe to avoid conflicts
-        # paper_trading_only=True prevents execution in live mode
+        "enabled": False,
+        "paper_trading_only": True,
+        "assets": ["BTC", "ETH"],
+        "interval_seconds": 10,
+        "description": "Microstructure-based scalping [DISABLED]",
     }
 }
 
@@ -233,12 +242,13 @@ class StrategyRunner:
         # Track last regime for logging changes
         self.last_regime: MarketRegime = None
 
-        # Trade cooldown: per-strategy cooldowns (mean_reversion needs faster, sentiment slower)
+        # Trade cooldown: per-strategy cooldowns
         self.last_trade_time: Dict[str, datetime] = {}
         cooldown_defaults = {
-            'momentum_perpetuals': 20,
+            'sniper': 240,               # 4h cooldown — strategy handles its own cooldown too
+            'momentum_perpetuals': 60,
             'mean_reversion_metals': 10,
-            'sentiment_driven': 15,
+            'sentiment_driven': 45,
             'enhanced_scalper': 2,
         }
         self.trade_cooldown_minutes = cooldown_defaults.get(strategy_name, 15)
@@ -390,51 +400,57 @@ class StrategyRunner:
                 # 4b. Size positions (with dynamic sizing if available)
                 raw_positions = self.strategy.size_positions(signals, None)
 
-                # Apply calendar-based position size reduction
-                if calendar_multiplier < 1.0 and calendar_multiplier > 0:
-                    raw_positions = {k: v * calendar_multiplier for k, v in raw_positions.items()}
-
-                # Apply dynamic sizing (regime + correlation aware)
-                if self.dynamic_sizer and self.use_dynamic_sizing:
-                    # Get current prices for sizing
-                    current_prices = {}
-                    for sym in raw_positions:
-                        try:
-                            md = await self.fetcher.get_market_data(sym)
-                            current_prices[sym] = md.mid_price
-                        except:
-                            pass
-
-                    # Get signal confidences
-                    signal_confidences = {sym: sig.confidence for sym, sig in signals.items()}
-
-                    # Update dynamic sizer with current positions
-                    self.dynamic_sizer.update_positions(current_positions)
-
-                    # Size portfolio with all factors
-                    sizing_results = self.dynamic_sizer.size_portfolio(
-                        target_positions=raw_positions,
-                        current_prices=current_prices,
-                        equity=self.risk_mgr.equity,
-                        strategy_name=self.name,
-                        regime_state=regime_state,
-                        correlation_state=correlation_state,
-                        signal_confidences=signal_confidences
-                    )
-
-                    # Extract adjusted sizes
-                    target_positions = {sym: result.adjusted_size for sym, result in sizing_results.items()}
-
-                    # Log significant adjustments
-                    for sym, result in sizing_results.items():
-                        if result.final_multiplier < 0.8 or result.final_multiplier > 1.2:
-                            logger.debug(f"[{self.name}] {sym}: sized {result.raw_size:.1%} -> "
-                                       f"{result.adjusted_size:.1%} ({result.rationale})")
-                else:
-                    # Fallback: Apply regime-based position size adjustment
+                # Sniper strategy handles its own sizing (full equity at 10x).
+                # Skip calendar scaling and dynamic sizer — they would cap the
+                # position to 25% of equity and make it too small for HIP-3.
+                if self.name == 'sniper':
                     target_positions = raw_positions
-                    if regime_multiplier != 1.0:
-                        target_positions = {k: v * regime_multiplier for k, v in target_positions.items()}
+                else:
+                    # Apply calendar-based position size reduction
+                    if calendar_multiplier < 1.0 and calendar_multiplier > 0:
+                        raw_positions = {k: v * calendar_multiplier for k, v in raw_positions.items()}
+
+                    # Apply dynamic sizing (regime + correlation aware)
+                    if self.dynamic_sizer and self.use_dynamic_sizing:
+                        # Get current prices for sizing
+                        current_prices = {}
+                        for sym in raw_positions:
+                            try:
+                                md = await self.fetcher.get_market_data(sym)
+                                current_prices[sym] = md.mid_price
+                            except:
+                                pass
+
+                        # Get signal confidences
+                        signal_confidences = {sym: sig.confidence for sym, sig in signals.items()}
+
+                        # Update dynamic sizer with current positions
+                        self.dynamic_sizer.update_positions(current_positions)
+
+                        # Size portfolio with all factors
+                        sizing_results = self.dynamic_sizer.size_portfolio(
+                            target_positions=raw_positions,
+                            current_prices=current_prices,
+                            equity=self.risk_mgr.equity,
+                            strategy_name=self.name,
+                            regime_state=regime_state,
+                            correlation_state=correlation_state,
+                            signal_confidences=signal_confidences
+                        )
+
+                        # Extract adjusted sizes
+                        target_positions = {sym: result.adjusted_size for sym, result in sizing_results.items()}
+
+                        # Log significant adjustments
+                        for sym, result in sizing_results.items():
+                            if result.final_multiplier < 0.8 or result.final_multiplier > 1.2:
+                                logger.debug(f"[{self.name}] {sym}: sized {result.raw_size:.1%} -> "
+                                           f"{result.adjusted_size:.1%} ({result.rationale})")
+                    else:
+                        # Fallback: Apply regime-based position size adjustment
+                        target_positions = raw_positions
+                        if regime_multiplier != 1.0:
+                            target_positions = {k: v * regime_multiplier for k, v in target_positions.items()}
 
                 # 5. Execute orders - only for CHANGES in position
                 for sym, target_pct in target_positions.items():
@@ -480,6 +496,25 @@ class StrategyRunner:
                                     logger.debug(f"[{self.name}] {sym}: cooldown ({minutes_since:.0f}m < {self.trade_cooldown_minutes}m)")
                                     continue
 
+                        # LOW EQUITY GUARD: Skip new entries when equity too small for proper sizing
+                        # $11 HIP-3 minimum makes position sizing impossible to calibrate below ~$20
+                        if not is_closing and self.risk_mgr.equity < 20.0:
+                            logger.debug(f"[{self.name}] {sym}: Low equity guard - equity=${self.risk_mgr.equity:.0f}")
+                            continue
+
+                        # POSITION CAP: Sniper uses full equity at 10x (by design), others capped at 25%
+                        if not is_closing and self.name != 'sniper':
+                            max_position_notional = self.risk_mgr.equity * 0.25
+                            target_notional = abs(target_size * px)
+                            if target_notional > max_position_notional:
+                                old_target = target_size
+                                target_size = (max_position_notional / px) * (1 if target_size > 0 else -1)
+                                delta_size = target_size - current_size
+                                delta_notional = abs(delta_size * px)
+                                logger.info(f"[{self.name}] {sym}: Position capped at 25% equity (${max_position_notional:.0f})")
+                                if delta_notional < 5.0:
+                                    continue
+
                         # Determine order side from delta direction
                         if delta_size > 0:
                             side = "buy"
@@ -490,30 +525,49 @@ class StrategyRunner:
                         else:
                             continue
 
-                        # HIP-3 minimum order value is $10
-                        min_order_value = 10.0
+                        # Leverage calculation
+                        # Sniper uses explicit 10x leverage from strategy config
+                        if self.name == 'sniper':
+                            required_leverage = self.strategy.config.get('leverage', 10.0)
+                        else:
+                            allocated_equity = abs(target_size * px) if not is_closing else abs(order_size * px)
+                            required_leverage = (order_size * px) / allocated_equity if allocated_equity > 0 else 1.0
+
+                        # HIP-3 minimum order value is $10 (use $11 buffer for rounding/slippage)
+                        min_order_value = 11.0
                         notional = order_size * px
+                        
                         if notional < min_order_value:
                             if is_closing:
                                 # For closing, bump to minimum - don't skip
                                 order_size = min_order_value / px
                                 logger.debug(f"[{self.name}] {sym}: Close bumped to ${min_order_value} min")
+                            elif self.name == 'sniper':
+                                # Sniper uses full equity at 10x — bump to minimum
+                                order_size = min_order_value / px
+                                logger.info(f"[{self.name}] {sym}: Adjusted to ${min_order_value} minimum (was ${notional:.2f})")
                             else:
                                 # For new entries, check if leverage is reasonable
                                 is_metal = sym in ['XAU', 'XAG', 'HG']
                                 max_leverage = 5.0 if is_metal else 3.0
-                                required_leverage = min_order_value / notional
+                                # Recalculate leverage using bumped size
+                                required_leverage = min_order_value / allocated_equity if allocated_equity > 0 else 999
                                 if required_leverage > max_leverage:
-                                    logger.debug(f"[{self.name}] Skipping {sym}: ${notional:.2f} needs {required_leverage:.1f}x (max {max_leverage}x)")
+                                    logger.debug(f"[{self.name}] Skipping {sym}: ${min_order_value:.2f} needs {required_leverage:.1f}x (max {max_leverage}x)")
                                     continue
                                 order_size = min_order_value / px
                                 logger.info(f"[{self.name}] {sym}: Adjusted to ${min_order_value} minimum (was ${notional:.2f})")
 
-                        # Apply position sizing constraints
+                        # Apply position sizing constraints.
+                        # For sniper: size already reflects 10x leverage, so use 1.0
+                        # for risk checks to avoid double-counting. Keep real leverage
+                        # for exchange order submission.
+                        eval_leverage = max(1.0, required_leverage)
+                        risk_leverage = 1.0 if self.name == 'sniper' else eval_leverage
                         final_size = self.pos_sizer.apply_constraints(
                             symbol=sym,
                             raw_size=order_size,
-                            leverage=1.0,
+                            leverage=risk_leverage,
                             price=px,
                             min_order_size=0.001,
                             is_closing=is_closing,
@@ -534,7 +588,8 @@ class StrategyRunner:
                                     size=final_size,
                                     current_price=px,
                                     strategy_name=self.name,
-                                    signal_strength=signal_confidence
+                                    signal_strength=signal_confidence,
+                                    leverage=eval_leverage
                                 )
                                 success = entry_result.success
                                 if success:
@@ -546,6 +601,10 @@ class StrategyRunner:
                                               f"({entry_result.entry_type}, {improvement:+.2f}% target)")
                                 else:
                                     logger.warning(f"[{self.name}] Entry optimizer failed for {sym}: {entry_result.error}")
+                                    # Reset sniper active_position so it scans again next cycle
+                                    if hasattr(self.strategy, 'active_position') and self.strategy.active_position:
+                                        logger.info(f"[{self.name}] Resetting active_position after failed entry")
+                                        self.strategy.active_position = None
                             else:
                                 # Direct order for closing trades or when optimizer disabled
                                 res = await self.order_mgr.create_order(
@@ -554,7 +613,8 @@ class StrategyRunner:
                                     sz=final_size,
                                     px=px,
                                     strategy_name=self.name,
-                                    is_closing=is_closing
+                                    is_closing=is_closing,
+                                    leverage=eval_leverage
                                 )
                                 if res.success:
                                     self.trade_count += 1
@@ -564,6 +624,9 @@ class StrategyRunner:
                                               f"{side.upper()} {final_size:.4f} {sym} @ {px:.2f}")
                                 else:
                                     logger.warning(f"[{self.name}] Order failed for {sym}: {res.error}")
+                                    if hasattr(self.strategy, 'active_position') and self.strategy.active_position:
+                                        logger.info(f"[{self.name}] Resetting active_position after failed order")
+                                        self.strategy.active_position = None
 
                     except Exception as e:
                         logger.error(f"[{self.name}] Execution error for {sym}: {e}")
@@ -756,7 +819,9 @@ class MultiStrategyManager:
                     self.runners[name] = runner
                     logger.info(f"Initialized strategy: {name} - {config['description']}")
                 except Exception as e:
-                    logger.error(f"Failed to initialize {name}: {e}")
+                    # paper_trading_only strategies in live mode are expected failures
+                    log_fn = logger.warning if "paper_trading_only" in str(e) else logger.error
+                    log_fn(f"Failed to initialize {name}: {e}")
 
     async def _position_monitor(self):
         """Periodic position monitoring, equity refresh, and summary logging."""
@@ -767,15 +832,16 @@ class MultiStrategyManager:
                     # === REFRESH EQUITY FROM EXCHANGE ===
                     try:
                         user_state = await self.executor.get_user_state()
-                        if user_state.equity > 0:
+                        live_equity = getattr(user_state, 'total_equity', getattr(user_state, 'equity', 0))
+                        if live_equity > 0:
                             old_equity = self.equity
-                            self.equity = user_state.equity
-                            self.risk_mgr.equity = user_state.equity
+                            self.equity = live_equity
+                            self.risk_mgr.equity = live_equity
                             self.risk_mgr.session_high_equity = max(
-                                self.risk_mgr.session_high_equity, user_state.equity
+                                self.risk_mgr.session_high_equity, live_equity
                             )
-                            if abs(old_equity - user_state.equity) > 0.01:
-                                logger.info(f"Equity refreshed: ${old_equity:.2f} -> ${user_state.equity:.2f}")
+                            if abs(old_equity - live_equity) > 0.01:
+                                logger.info(f"Equity refreshed: ${old_equity:.2f} -> ${live_equity:.2f}")
                     except Exception as e:
                         logger.debug(f"Equity refresh error: {e}")
 
@@ -866,6 +932,20 @@ class MultiStrategyManager:
         """Run all strategies concurrently with position monitoring."""
         self.running = True
         self.start_time = datetime.now()
+
+        # === FETCH REAL EQUITY AT STARTUP ===
+        try:
+            user_state = await self.executor.get_user_state()
+            if user_state.equity > 0:
+                self.equity = user_state.equity
+                self.risk_mgr.equity = user_state.equity
+                self.risk_mgr.session_high_equity = user_state.equity
+                self.risk_mgr.set_portfolio(equity=user_state.equity, open_positions=[])
+                logger.info(f"💰 Live equity fetched at startup: ${user_state.equity:.2f}")
+            else:
+                logger.warning(f"Live equity returned $0 — using fallback ${self.equity:.2f}")
+        except Exception as e:
+            logger.warning(f"Could not fetch live equity at startup: {e} — using ${self.equity:.2f}")
 
         logger.info("=" * 60)
         mode_label = "MOCK (paper)" if self.mode == "mock" else "LIVE"

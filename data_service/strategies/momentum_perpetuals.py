@@ -127,84 +127,52 @@ class MomentumPerpetuals(StrategyBase):
             else:
                 rationale_parts.append("No momentum consensus")
 
-            # Apply filters if we have a primary signal
-            if direction != 'flat':
-                # 2. VOLUME CONFIRMATION
-                vol_ratio_safe = vol_ratio if not pd.isna(vol_ratio) else 1.0
-                if vol_ratio_safe < self.volume_min_threshold:
-                    confidence *= vol_ratio_safe / self.volume_min_threshold
-                    rationale_parts.append(f"low vol ({vol_ratio_safe:.2f}x)")
-                elif vol_ratio_safe > 1.5:
-                    confidence += min(0.15, (vol_ratio_safe - 1.0) * 0.1)
-                    rationale_parts.append(f"high vol ({vol_ratio_safe:.2f}x)")
-                
-                # 3. TREND STRENGTH FILTER (ADX)
-                adx_safe = adx if not pd.isna(adx) else 25
-                if adx_safe < self.adx_threshold:
-                    confidence *= 0.85
-                    rationale_parts.append(f"weak trend (ADX={adx_safe:.0f})")
-                elif adx_safe > 40:
-                    confidence += 0.10
-                    rationale_parts.append(f"strong trend (ADX={adx_safe:.0f})")
-                
-                # 4. FUNDING RATE ENTRY FILTER
-                funding_safe = funding if not pd.isna(funding) else 0
-                if direction == 'long' and funding_safe > self.funding_threshold:
+            # Check existing position state FIRST (before new signal filters)
+            last_sig = self.last_signals.get(symbol)
+            position_direction = last_sig.direction if last_sig else 'flat'
+            exit_triggered = False
+            funding_safe = funding if not pd.isna(funding) else 0
+
+            # === EXIT LOGIC (runs regardless of new signal direction) ===
+            if position_direction != 'flat' and symbol in self.entry_prices:
+                entry_price = self.entry_prices[symbol]
+
+                # Calculate P&L using POSITION direction
+                if position_direction == 'long':
+                    pnl_pct = (current_price - entry_price) / entry_price
+                else:
+                    pnl_pct = (entry_price - current_price) / entry_price
+
+                # FUNDING RATE EXIT
+                if position_direction == 'long' and funding_safe > self.funding_exit_threshold:
                     direction = 'flat'
-                    rationale_parts.append(f"high funding (+{funding_safe:.4f})")
-                elif direction == 'short' and funding_safe < -self.funding_threshold:
+                    exit_triggered = True
+                    rationale_parts.append(f"EXIT: extreme funding ({funding_safe:.4f})")
+                elif position_direction == 'short' and funding_safe < -self.funding_exit_threshold:
                     direction = 'flat'
-                    rationale_parts.append(f"high funding ({funding_safe:.4f})")
-                
-                # 5. FUNDING RATE EXIT (Existing Positions)
-                last_sig = self.last_signals.get(symbol)
-                position_direction = last_sig.direction if last_sig else 'flat'
-                exit_triggered = False
+                    exit_triggered = True
+                    rationale_parts.append(f"EXIT: extreme funding ({funding_safe:.4f})")
 
-                if last_sig and position_direction == direction:
-                    if direction == 'long' and funding_safe > self.funding_exit_threshold:
-                        direction = 'flat'
-                        exit_triggered = True
-                        rationale_parts.append(f"EXIT: extreme funding ({funding_safe:.4f})")
-                    elif direction == 'short' and funding_safe < -self.funding_exit_threshold:
-                        direction = 'flat'
-                        exit_triggered = True
-                        rationale_parts.append(f"EXIT: extreme funding ({funding_safe:.4f})")
-
-                # 6. HARD STOP LOSS & TAKE PROFIT (check against POSITION direction, not signal)
-                if position_direction != 'flat' and symbol in self.entry_prices and not exit_triggered:
-                    entry_price = self.entry_prices[symbol]
-
-                    # Calculate P&L using POSITION direction (not current signal direction)
-                    if position_direction == 'long':
-                        pnl_pct = (current_price - entry_price) / entry_price
-                    else:  # short
-                        pnl_pct = (entry_price - current_price) / entry_price
-
-                    # STOP LOSS: -2% or -2*ATR (whichever is tighter)
+                # STOP LOSS: -4% or -3*ATR (whichever is tighter)
+                if not exit_triggered:
                     atr_pct = self.latest_atr.get(symbol, 0.01)
-                    stop_loss_pct = min(0.02, atr_pct * 2.0)
+                    stop_loss_pct = min(0.04, atr_pct * 3.0)
 
                     if pnl_pct < -stop_loss_pct:
                         direction = 'flat'
                         exit_triggered = True
                         rationale_parts.append(f"stop loss ({pnl_pct:.2%})")
-
-                    # TAKE PROFIT: 3% target
                     elif pnl_pct > 0.03:
                         direction = 'flat'
                         exit_triggered = True
                         rationale_parts.append(f"take profit ({pnl_pct:.2%})")
-
-                    # TRAILING STOP: Track peak and exit on 30% retracement
-                    elif pnl_pct > 0:  # Only track positive P&L
+                    elif pnl_pct > 0:
                         if symbol not in self.highest_profit:
                             self.highest_profit[symbol] = 0
                         self.highest_profit[symbol] = max(self.highest_profit[symbol], pnl_pct)
-
-                        if self.highest_profit[symbol] > 0.02:  # After 2% profit
+                        if self.highest_profit[symbol] > 0.02:
                             drawdown_from_peak = self.highest_profit[symbol] - pnl_pct
-                            if drawdown_from_peak > self.highest_profit[symbol] * 0.30:  # 30% retracement
+                            if drawdown_from_peak > self.highest_profit[symbol] * 0.30:
                                 direction = 'flat'
                                 exit_triggered = True
                                 rationale_parts.append(f"trailing stop (peak={self.highest_profit[symbol]:.2%})")
@@ -213,6 +181,54 @@ class MomentumPerpetuals(StrategyBase):
                 if exit_triggered:
                     self.entry_prices.pop(symbol, None)
                     self.highest_profit.pop(symbol, None)
+
+                # HOLD: No exit triggered and no new opposing signal
+                if not exit_triggered and (direction == 'flat' or direction == position_direction):
+                    direction = position_direction
+                    confidence = max(confidence, 0.5)
+                    rationale_parts.append("HOLD (no exit condition met)")
+
+            # Apply filters if we have a NEW primary signal (not a hold)
+            if direction != 'flat' and symbol not in self.entry_prices:
+                # 2. VOLUME CONFIRMATION
+                vol_ratio_safe = vol_ratio if not pd.isna(vol_ratio) else 1.0
+                if vol_ratio_safe < self.volume_min_threshold:
+                    confidence *= vol_ratio_safe / self.volume_min_threshold
+                    rationale_parts.append(f"low vol ({vol_ratio_safe:.2f}x)")
+                elif vol_ratio_safe > 1.5:
+                    confidence += min(0.15, (vol_ratio_safe - 1.0) * 0.1)
+                    rationale_parts.append(f"high vol ({vol_ratio_safe:.2f}x)")
+
+                # 3. TREND STRENGTH FILTER (ADX)
+                adx_safe = adx if not pd.isna(adx) else 25
+                if adx_safe < self.adx_threshold:
+                    confidence *= 0.85
+                    rationale_parts.append(f"weak trend (ADX={adx_safe:.0f})")
+                elif adx_safe > 40:
+                    confidence += 0.10
+                    rationale_parts.append(f"strong trend (ADX={adx_safe:.0f})")
+
+                # 4. FUNDING RATE ENTRY FILTER
+                if direction == 'long' and funding_safe > self.funding_threshold:
+                    direction = 'flat'
+                    rationale_parts.append(f"high funding (+{funding_safe:.4f})")
+                elif direction == 'short' and funding_safe < -self.funding_threshold:
+                    direction = 'flat'
+                    rationale_parts.append(f"high funding ({funding_safe:.4f})")
+
+                # 8. ORDER BOOK IMBALANCE ADJUSTMENT
+                if fetcher and direction != 'flat':
+                    try:
+                        ob_imbalance = await self.orderbook_factors.calculate(symbol, fetcher)
+                        confidence, ob_reason = self.orderbook_factors.adjust_confidence(
+                            confidence, direction, ob_imbalance
+                        )
+                        if ob_reason:
+                            rationale_parts.append(ob_reason)
+                        if confidence == 0.0 and "spread" in ob_reason.lower():
+                            direction = 'flat'
+                    except Exception as e:
+                        logger.debug(f"Order book check skipped for {symbol}: {e}")
 
                 # 7. COOLDOWN LOGIC
                 if last_sig and last_sig.direction != direction:
@@ -230,24 +246,9 @@ class MomentumPerpetuals(StrategyBase):
                                 self.entry_prices[symbol] = current_price
                                 self.highest_profit[symbol] = 0
 
-                # 8. ORDER BOOK IMBALANCE ADJUSTMENT
-                if fetcher and direction != 'flat':
-                    try:
-                        ob_imbalance = await self.orderbook_factors.calculate(symbol, fetcher)
-                        confidence, ob_reason = self.orderbook_factors.adjust_confidence(
-                            confidence, direction, ob_imbalance
-                        )
-                        if ob_reason:
-                            rationale_parts.append(ob_reason)
-                        # Wide spread rejection
-                        if confidence == 0.0 and "spread" in ob_reason.lower():
-                            direction = 'flat'
-                    except Exception as e:
-                        logger.debug(f"Order book check skipped for {symbol}: {e}")
-
             # === FINALIZE SIGNAL ===
             confidence = float(np.clip(confidence, 0.0, 1.0))
-            if direction != 'flat' and confidence < 0.35:
+            if direction != 'flat' and confidence < 0.50:
                 direction = 'flat'
                 rationale_parts.append("insufficient confidence")
             

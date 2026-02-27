@@ -33,9 +33,16 @@ class OrderStorage:
         self.db_path = db_path
         self._init_db()
 
+    def _connect(self):
+        """Create a connection with busy_timeout to prevent 'database is locked' errors."""
+        conn = sqlite3.connect(self.db_path, timeout=10)
+        conn.execute("PRAGMA busy_timeout = 5000")
+        conn.execute("PRAGMA journal_mode = WAL")
+        return conn
+
     def _init_db(self):
         """Initialize SQLite database and create trades table."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS trades (
@@ -59,7 +66,7 @@ class OrderStorage:
 
     def save_order(self, order_data: Dict[str, Any]):
         """Save or update an order in the trades table."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             cursor = conn.cursor()
             
             # Simplified "upsert" for SQLite
@@ -172,7 +179,7 @@ class OrderStorage:
 
     def get_history(self, limit: int = 100) -> List[Dict[str, Any]]:
         """Retrieve recent trade history."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._connect() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM trades ORDER BY created_at DESC LIMIT ?", (limit,))

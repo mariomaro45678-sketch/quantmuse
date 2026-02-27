@@ -1,16 +1,16 @@
 {
     "position_limits": {
         "max_position_size_usd": 50000,
-        "max_position_pct_per_asset": 0.3,
+        "max_position_pct_per_asset": 12.0,
         "max_leverage_per_asset": 10,
-        "max_portfolio_leverage": 5,
-        "max_correlated_exposure_pct": 0.5
+        "max_portfolio_leverage": 12,
+        "max_correlated_exposure_pct": 1.0
     },
     "loss_limits": {
-        "max_daily_loss_pct": 0.10,
-        "max_weekly_loss_pct": 0.20,
-        "max_drawdown_pct": 0.25,
-        "circuit_breaker_drawdown_pct": 0.15
+        "max_daily_loss_pct": 0.15,
+        "max_weekly_loss_pct": 0.25,
+        "max_drawdown_pct": 0.30,
+        "circuit_breaker_drawdown_pct": 0.25
     },
     "var_settings": {
         "var_confidence_levels": [

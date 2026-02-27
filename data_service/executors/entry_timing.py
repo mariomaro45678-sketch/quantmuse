@@ -194,7 +194,8 @@ class EntryOptimizer:
         strategy_name: str,
         signal_strength: float = 0.5,
         force_strategy: Optional[EntryStrategy] = None,
-        is_closing: bool = False
+        is_closing: bool = False,
+        leverage: float = 1.0
     ) -> EntryResult:
         """
         Submit an entry with timing optimization.
@@ -210,6 +211,8 @@ class EntryOptimizer:
             strategy_name: Strategy generating the signal
             signal_strength: Signal confidence (0-1)
             force_strategy: Override entry strategy selection
+            is_closing: Whether it is a risk-reducing order
+            leverage: Leverage required for trade execution
 
         Returns:
             EntryResult with order details
@@ -222,7 +225,7 @@ class EntryOptimizer:
 
         # Immediate entry - just place the order
         if entry_strategy == EntryStrategy.IMMEDIATE:
-            return await self._execute_immediate(symbol, side, size, current_price, strategy_name, is_closing=is_closing)
+            return await self._execute_immediate(symbol, side, size, current_price, strategy_name, is_closing=is_closing, leverage=leverage)
 
         # Cancel any existing pending entry for this symbol
         if symbol in self.pending_entries:
@@ -257,7 +260,8 @@ class EntryOptimizer:
                 px=limit_price,
                 order_type="limit",
                 strategy_name=strategy_name,
-                is_closing=is_closing
+                is_closing=is_closing,
+                leverage=leverage
             )
 
             if result.success:
@@ -293,7 +297,8 @@ class EntryOptimizer:
         size: float,
         price: float,
         strategy_name: str,
-        is_closing: bool = False
+        is_closing: bool = False,
+        leverage: float = 1.0
     ) -> EntryResult:
         """Execute an immediate market/limit order."""
         if not self.order_manager:
@@ -306,7 +311,8 @@ class EntryOptimizer:
             px=price,
             order_type="limit",  # Still use limit for price protection
             strategy_name=strategy_name,
-            is_closing=is_closing
+            is_closing=is_closing,
+            leverage=leverage
         )
 
         self.stats["total_entries"] += 1
@@ -396,13 +402,20 @@ class EntryOptimizer:
                         should_chase = True
                         chase_reason = f"price down {move_pct:.2f}%"
 
-                # For pullback entries, check if pullback target hit
+                # For pullback entries, check if pullback target hit → execute immediately
                 if entry.entry_strategy == EntryStrategy.PULLBACK_WAIT and entry.pullback_target:
+                    pullback_hit = False
                     if entry.side == "buy" and current_price <= entry.pullback_target:
-                        logger.info(f"[EntryOptimizer] {symbol}: Pullback target hit @ {current_price:.4f}")
-                        # Let the existing limit order fill, or place new one at current price
+                        pullback_hit = True
                     elif entry.side == "sell" and current_price >= entry.pullback_target:
-                        logger.info(f"[EntryOptimizer] {symbol}: Pullback target hit @ {current_price:.4f}")
+                        pullback_hit = True
+
+                    if pullback_hit:
+                        logger.info(f"[EntryOptimizer] {symbol}: Pullback target hit @ {current_price:.4f} — executing")
+                        await self._chase_entry(entry, current_price, "pullback target hit")
+                        self.stats["pullback_entries"] += 1
+                        entries_to_remove.append(symbol)
+                        continue  # Skip the chase check below
 
                 if should_chase:
                     await self._chase_entry(entry, current_price, chase_reason)

@@ -94,6 +94,9 @@ class MockPriceEngine:
             "MSFT": 480.0,
             "AMD": 175.0,
             "COIN": 285.0,
+            # Crypto
+            "BTC": 96000.0,   # Bitcoin
+            "ETH": 2700.0,    # Ethereum
             # Commodities
             "CL": 78.0,       # Crude Oil
             "NG": 2.85        # Natural Gas
@@ -104,7 +107,8 @@ class MockPriceEngine:
             "XAU": 0.008,   "XAG": 0.015,   "HG": 0.012,   "PLAT": 0.014,
             "TSLA": 0.035,  "NVDA": 0.032,  "AAPL": 0.015, "GOOGL": 0.018,
             "AMZN": 0.020,  "META": 0.025,  "MSFT": 0.012, "AMD": 0.035,
-            "COIN": 0.045,  "CL": 0.022,    "NG": 0.040
+            "COIN": 0.045,  "BTC": 0.030,   "ETH": 0.035,
+            "CL": 0.022,    "NG": 0.040
         }
 
         # Spread in basis points (bid-ask spread)
@@ -112,7 +116,8 @@ class MockPriceEngine:
             "XAU": 2,  "XAG": 5,  "HG": 8,  "PLAT": 10,
             "TSLA": 1, "NVDA": 1, "AAPL": 1, "GOOGL": 1,
             "AMZN": 1, "META": 1, "MSFT": 1, "AMD": 2,
-            "COIN": 3, "CL": 3,  "NG": 5
+            "COIN": 3, "BTC": 1,  "ETH": 2,
+            "CL": 3,  "NG": 5
         }
 
         # US Market hours (EST): 9:30 AM - 4:00 PM
@@ -502,11 +507,22 @@ class HyperliquidFetcher:
         """Fetch Level-2 order book snapshot."""
         if self.mode == "mock":
             px = self.mock_engine.get_price(symbol)
-            # Use per-symbol realistic spread (in bps), not a hardcoded 0.1%
-            half_spread = self.mock_engine.get_spread(symbol) / 2  # get_spread returns decimal
-            step = half_spread  # level spacing same as half-spread
-            bids = [OrderBookEntry(px * (1 - half_spread - step * i), 10.0, 1) for i in range(5)]
-            asks = [OrderBookEntry(px * (1 + half_spread + step * i), 10.0, 1) for i in range(5)]
+            half_spread = self.mock_engine.get_spread(symbol) / 2
+            step = half_spread
+            # Generate asymmetric volumes to produce realistic OBI
+            # Use momentum from recent price changes to bias the book
+            base_sz = 10.0
+            imbalance = self.mock_engine.rng.normal(0, 0.3)  # random OBI bias
+            # Clamp imbalance to [-0.6, 0.6]
+            imbalance = max(-0.6, min(0.6, imbalance))
+            bid_sz = base_sz * (1 + imbalance)   # more bids when positive
+            ask_sz = base_sz * (1 - imbalance)   # more asks when negative
+            bids = [OrderBookEntry(px * (1 - half_spread - step * i),
+                                   bid_sz * self.mock_engine.rng.uniform(0.7, 1.3), 1)
+                    for i in range(5)]
+            asks = [OrderBookEntry(px * (1 + half_spread + step * i),
+                                   ask_sz * self.mock_engine.rng.uniform(0.7, 1.3), 1)
+                    for i in range(5)]
             return OrderBook(symbol=symbol, levels=[bids, asks], timestamp=time.time())
 
         # Live implementation

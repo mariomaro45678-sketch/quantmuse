@@ -32,8 +32,8 @@ class MeanReversionMetals(StrategyBase):
         self.metals_factors = MetalsFactors()
         
         # Configurable thresholds
-        self.rsi_overbought = self.config.get('rsi_overbought', 70)
-        self.rsi_oversold = self.config.get('rsi_oversold', 30)
+        self.rsi_overbought = self.config.get('rsi_overbought', 65)
+        self.rsi_oversold = self.config.get('rsi_oversold', 35)
         self.ratio_zscore_threshold = self.config.get('ratio_zscore_threshold', 2.0)
         self.bb_period = self.config.get('bb_period', 20)
         self.bb_std = self.config.get('bb_std', 2.0)
@@ -123,21 +123,41 @@ class MeanReversionMetals(StrategyBase):
             confidence = 0.0
             rationale_parts = []
 
-            # 1. PRIMARY SIGNAL: RSI + Bollinger Bands
-            if rsi < self.rsi_oversold and close < lower_bb:
+            # 1. PRIMARY SIGNAL: RSI OR Bollinger Bands (either can trigger)
+            rsi_oversold = rsi < self.rsi_oversold
+            rsi_overbought = rsi > self.rsi_overbought
+            below_bb = close < lower_bb
+            above_bb = close > upper_bb
+
+            if rsi_oversold or below_bb:
                 direction = 'long'
-                confidence = 0.65
-                rationale_parts.append(f"Oversold: RSI={rsi:.1f} & below BB")
+                if rsi_oversold and below_bb:
+                    # Both conditions — high confidence
+                    confidence = 0.65
+                    rationale_parts.append(f"Oversold: RSI={rsi:.1f} & below BB")
+                elif rsi_oversold:
+                    confidence = 0.45
+                    rationale_parts.append(f"RSI oversold ({rsi:.1f})")
+                else:
+                    confidence = 0.45
+                    rationale_parts.append(f"Below lower BB (pos={bb_position:.2f})")
                 
                 # Extra confidence if deeply oversold
                 if rsi < 25:
                     confidence += 0.10
                     rationale_parts.append("deeply oversold")
                     
-            elif rsi > self.rsi_overbought and close > upper_bb:
+            elif rsi_overbought or above_bb:
                 direction = 'short'
-                confidence = 0.65
-                rationale_parts.append(f"Overbought: RSI={rsi:.1f} & above BB")
+                if rsi_overbought and above_bb:
+                    confidence = 0.65
+                    rationale_parts.append(f"Overbought: RSI={rsi:.1f} & above BB")
+                elif rsi_overbought:
+                    confidence = 0.45
+                    rationale_parts.append(f"RSI overbought ({rsi:.1f})")
+                else:
+                    confidence = 0.45
+                    rationale_parts.append(f"Above upper BB (pos={bb_position:.2f})")
                 
                 # Extra confidence if deeply overbought
                 if rsi > 75:
@@ -230,11 +250,18 @@ class MeanReversionMetals(StrategyBase):
                         del self.entry_prices[symbol]
                     if symbol in self.entry_bars:
                         del self.entry_bars[symbol]
+                elif direction == 'flat' or direction == last_sig.direction:
+                    # HOLD: Position is open but no exit triggered and no new opposing signal.
+                    # Continue holding with the existing direction so runner doesn't close.
+                    direction = last_sig.direction
+                    confidence = max(confidence, 0.5)  # maintain minimum hold confidence
+                    rationale_parts.append("HOLD (no exit condition met)")
 
             # === FINALIZE SIGNAL ===
             # Confidence must be meaningful (>0.4) to take position
             confidence = float(np.clip(confidence, 0.0, 1.0))
-            if confidence < 0.4:
+            if confidence < 0.4 and symbol not in self.entry_prices:
+                # Only force flat if we don't have an open position
                 direction = 'flat'
                 rationale_parts = ["Insufficient confidence"]
 
